@@ -43,7 +43,7 @@ winject-radio-realtek --config /etc/winject/radio-a.cfg
                         control thread (bfc epoll reactor)
  manager ──UDP console──▶ MplaneServer ─▶ mplane_commands ─▶ RealtekDevice/Radio/Test backends
                                                                  │
-                                                       Nl80211 ◀─┤ Settings (slots, reset id)
+                                                       Nl80211 ◀─┤ Settings (slots)
                                                                  │
                                     publishes TxProfile / RxFilter (atomics)
                                                                  ▼
@@ -74,7 +74,7 @@ The file uses the manager's `key = value` format, and `#` starts a comment. The 
 | `net.inject_port` | no | `9000` | d-plane inject |
 | `net.forward_port` | no | `9210` | d-plane forward registration |
 | `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on all three ports |
-| `state.dir` | yes | | Slot files and the last reset id. Created with mode 0700 if missing |
+| `state.dir` | yes | | Slot files. Created with mode 0700 if missing |
 | `tune.tx_queue_sz` | no | `20` | TX ring size, 1–64 |
 | `tune.rx_batch` | no | `16` | Frames per `recvmmsg`, 1–64 |
 | `tune.sock_rcvbuf` | no | `4194304` | `SO_RCVBUF` on the packet socket |
@@ -109,7 +109,7 @@ src/radio/
   Forwarder.{h,cpp}            §8.3
   DataPlane.{h,cpp}            data thread: epoll loop owning Injector and Forwarder
   Counters.h                   atomics for tx_info / rx_info (§10)
-  Settings.{h,cpp}             slot files, current slot, reset id (§6.5)
+  Settings.{h,cpp}             slot files, current slot (§6.5)
   MplaneServer.{h,cpp}         UDP console: datagram → mplane_commands → reply datagrams (no test backend)
   RealtekBackends.{h,cpp}      mplane_device_backend / mplane_radio_backend
   Fcs.{h,cpp}                  CRC-32 (same polynomial as winject-l3 WifiFcs)
@@ -127,7 +127,7 @@ Dependencies: `libnl-3-dev` (installed) and `libnl-genl-3-dev` (**not installed*
 
 ## 5. Vendored m-plane
 
-Copy these files from `winject-radio-esp32/src/winject-esp32/` at a pinned commit (`3dbab50` today), and record the commit in `src/vendor/mplane/VERSION`:
+Copy these files from `winject-radio-esp32/src/winject-esp32/` at a pinned commit, and record that commit in `src/vendor/mplane/VERSION`:
 
 ```
 mplane/mplane_args.{h,cpp}   mplane/mplane_commands.{h,cpp}   mplane/mplane_reply.{h,cpp}
@@ -258,7 +258,7 @@ Pack the filter with `mac_filter_pack` and store it in `RxFilter` (`atomic<uint6
 | `ping`, `help` | Handled by the vendored code |
 | `save <n>` | Write `state.dir/slot<n>` (§6.6) with the current radio and filter, then make it current |
 | `load <n>` | Read the slot (`ENOENT` if missing, `EIO` if it doesn't parse), apply the radio settings (§6.3) and the filter, make it current |
-| `reset [id=<u8>]` | If `id` equals `state.dir/reset_id`, reply `EALREADY`. Otherwise write the id, reply, wait 200 ms for the reply to flush, then `execv("/proc/self/exe", argv)`. The new process reruns bring-up and applies the current slot, which matches the ESP32's reboot behaviour |
+| `reset` | Reply `OK`, wait 200 ms for the reply to flush, then `execv("/proc/self/exe", argv)`. The new process reruns bring-up and applies the current slot, which matches the ESP32's reboot behaviour. Clients confirm a lost reply via `ts` in `tx_info` ([mplane.md](mplane.md#device)) |
 | `reset mode=OTA` | `EINVAL`; there is no OTA mode. `mode=WINJECT` is accepted and does nothing |
 | `test_wifi_*`, `test_ether_*` | `NOK ENODEV`; not implemented (§10) |
 | `network`, `tune_param`, `tune_tx_param`, `tune_rx_param` | `NOK ENOTSUP` (`mplane_status::unsupported`). The host OS owns networking, and sizing comes from the config file |
@@ -473,7 +473,7 @@ The accounting identities in `winject-radio-esp32/docs/winject.md` ("Frame accou
 | `PowerCalTest.cpp` | Shipped `txpower.csv` loads all 63 indices; nearest match incl. non-monotonic rows and ties; index 0 never chosen; clamping; CSV header/comments/sparse rows; bad index, bad value, duplicate, too few rows, missing file |
 | `RxFilterBpfTest.cpp` | Run the generated program with a small cBPF interpreter in the test on frames with different `rt_len` |
 | `FcsTest.cpp` | Same vectors as `winject-l3/src/test/WifiFcsTest.cpp` |
-| `SettingsTest.cpp` | save/load round trip, missing slot → `not_found`, corrupt → `io_error`, reset id |
+| `SettingsTest.cpp` | save/load round trip, missing slot → `not_found`, corrupt → `io_error` |
 | `MplaneRealtekTest.cpp` | The vendored `mplane_commands` with `RealtekBackends` on fake `Nl80211` and `DataPlane` interfaces: the manager's exact startup sequence (`cmd:1 radio_caps_info` … `cmd:4 save 0`) and expected replies |
 | `InjectorTest.cpp` | Injector on a socketpair and a fake packet sink: counters, ring full, ENOBUFS retry and expiry |
 | `ForwarderTest.cpp` | Captured frames in, `MPDU‖FCS` out; peer registration; trusted source |
@@ -551,7 +551,7 @@ Rates are in Mbit/s, with loss in brackets. Throughput follows the offer, and th
 |---|---|---|
 | **P0** bring-up | Repo skeleton, CMake, vendored m-plane + shim, `Config`, `DeviceSelector`, `Nl80211` (monitor, channel, regdom), `MplaneServer` with `ping`, `help`, `radio_caps_info`, `radio_tx_info` | `mp 127.0.0.1:2201 radio_caps_info` → `OK radio_caps_info fcs=ACTUAL`; `iw dev` shows monitor on the configured channel; unit tests pass |
 | **P1** data path | `Radiotap`, `PacketSocket`, `Injector`, `Forwarder`, `rx_filter_addr3`, `Fcs`, counters, `tx_info`/`rx_info` | §12 exit criteria |
-| **P2** settings | Full `radio_tx` incl. power (§7) and rollback, `save`/`load`, `reset id=`, `MaxTxBufLen` backpressure | Manager restart re-programs from scratch; `reset id=` twice gives `EALREADY`; power steps visible on `wfb_ng_power_test` (radio-b as receiver) |
+| **P2** settings | Full `radio_tx` incl. power (§7) and rollback, `save`/`load`, `reset`, `MaxTxBufLen` backpressure | Manager restart re-programs from scratch; reset confirm via `ts`; power steps visible on `wfb_ng_power_test` (radio-b as receiver) |
 | **P3** ops | systemd template unit (`AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN`, `User=winject`, `StateDirectory=winject-radio-realtek/%i`), udev rule, `docs/radio-realtek.md`, README | `systemctl start winject-radio-realtek@a` works after a reboot with no manual steps |
 | **P4** manager (`winject-l3`) | `Config.cpp:128` channel check → a list incl. 36–165; `modulation_ok_for_channel` rejects DSS/CCK above 14; `PhyAirtime` for 5 GHz; optional `winject.bandwidth`; document `winject.tx_burst_size` for this radio | Manager tests pass; a 5 GHz run on the bench |
 | **P4b** driver (optional) | Patch `usb_ops_linux.c:1108` to keep `crc_err` frames when the interface is in monitor mode (they already get `F_BADFCS`) | `fcs_error_pkt` rises when the attenuator is turned up |

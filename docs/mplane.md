@@ -34,7 +34,7 @@ Command names, aliases, and argument keys are matched **case-insensitively**. Ar
 
 ### Request correlation (`cmd:<u8>`)
 
-**winject-manager** prefixes each line with **`cmd:<u8>`** so replies can be paired with requests. The id is only for correlation; idempotent commands still use **`id=<u8>`** in the command body (`reset id=…`).
+**winject-manager** prefixes each line with **`cmd:<u8>`** so replies can be paired with requests. The id is only for correlating replies with requests.
 
 | Direction | Wire format |
 |-----------|-------------|
@@ -77,7 +77,6 @@ Info replies (lines that do not start with `OK`) get `OK:<u8> ` prepended. Lines
 | `ENOSYS` | Unknown command |
 | `ENOTSUP` | `network`, `tune_param`, `tune_tx_param`, `tune_rx_param` with arguments |
 | `ENODEV` | Every `test_*` command (no test backend) |
-| `EALREADY` | `reset id=` repeats the last accepted reset id |
 | `ENOENT` | `load` of a slot with no file |
 | `EIO` | nl80211 failure while applying `radio_tx` or `load`, TX power read-back mismatch, BPF attach failure, or a slot/state file that cannot be written |
 
@@ -95,13 +94,13 @@ There is one mode. `reset mode=WINJECT` is accepted and behaves like a plain `re
 |---------|-------|-----------|-------|
 | `help` | `?` | | usage lines, then `modulations: …` |
 | `ping` | `p` | | `pong` |
-| `reset` | `r` | `[id=<u8>] [mode=WINJECT]` | `OK` or `OK id=<u8>`, then the process restarts itself |
+| `reset` | `r` | `[mode=WINJECT]` | `OK`, then the process restarts itself |
 | `save` | | `<slot 0-9>` | `OK`; stores the radio settings and `rx_filter_addr3`, and makes the slot current |
 | `load` | | `<slot 0-9>` | `OK`; applies the slot's radio settings and filter now, and makes the slot current. `NOK ENOENT` if the slot is empty |
 | `network` | `sn` | | Not supported, see below |
 | `tune_param`, `tune_tx_param`, `tune_rx_param` | `tp`, `ttp`, `trp` | | Not supported, see below |
 
-**Reset.** The reply is sent first. Within about 250 ms the process `execv`s `/proc/self/exe` with its original arguments, so it re-reads the config file, repeats bring-up, and applies the current slot, like the ESP32's reboot. The interface stays in monitor mode across the restart. With `id=`, the id is checked before restarting: a repeat of the last accepted id replies `NOK EALREADY` and does not restart. The accepted id is written to `state.dir/reset_id` but is currently only compared in memory, so the check does not survive the restart it triggers.
+**Reset.** The reply is sent first. Within about 250 ms the process `execv`s `/proc/self/exe` with its original arguments, so it re-reads the config file, repeats bring-up, and applies the current slot, like the ESP32's reboot. The interface stays in monitor mode across the restart. If a client is unsure whether `reset` completed (no reply or timeout), it polls `tx_info` and compares `ts` (uptime in µs, which restarts near zero after every reset) with the elapsed time since the request; it resends `reset` only when `ts` shows the radio did not restart.
 
 **Boot settings.** At startup the radio applies the current slot (`state.dir/current`, the last slot saved or loaded). A missing slot or one that does not apply falls back to the defaults: `channel=1 tx_power=20 modulation=OFDM_6M cca=true`, filter cleared. Changes made with `radio_tx` or `rx_filter_addr3` are not persisted until `save`.
 
@@ -239,5 +238,5 @@ mp radio_tx_info
 mp save 1
 mp tx_info
 mp rx_info
-mp reset id=7      # restarts; a repeat before the restart replies NOK EALREADY
+mp reset           # restarts; confirm with tx_info ts if the OK reply is lost
 ```

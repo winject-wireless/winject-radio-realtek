@@ -43,6 +43,7 @@ std::string trim(const std::string& s)
 
 Settings::Settings(std::string state_dir) : state_dir_(std::move(state_dir))
 {
+    unlink((state_dir_ + "/reset_id").c_str());
 }
 
 std::string Settings::slot_path(uint8_t slot) const
@@ -53,11 +54,6 @@ std::string Settings::slot_path(uint8_t slot) const
 std::string Settings::current_path() const
 {
     return state_dir_ + "/current";
-}
-
-std::string Settings::reset_path() const
-{
-    return state_dir_ + "/reset_id";
 }
 
 bool Settings::load_current(SlotData* out, std::string* error)
@@ -216,34 +212,6 @@ void Settings::set_current_slot(uint8_t slot)
 std::optional<uint8_t> Settings::current_slot() const
 {
     return current_slot_;
-}
-
-mplane_status Settings::accept_reset_id(uint8_t id)
-{
-    if (reset_id_.has_value() && *reset_id_ == id)
-    {
-        return mplane_status::already;
-    }
-    if (!ensure_dir(state_dir_))
-    {
-        return mplane_status::io_error;
-    }
-    FILE* f = fopen(reset_path().c_str(), "w");
-    if (f == nullptr)
-    {
-        return mplane_status::io_error;
-    }
-    fprintf(f, "%u\n", id);
-    fflush(f);
-    fsync(fileno(f));
-    fclose(f);
-    reset_id_ = id;
-    return mplane_status::ok;
-}
-
-bool Settings::reset_id_matches(uint8_t id) const
-{
-    return reset_id_.has_value() && *reset_id_ == id;
 }
 
 }  // namespace winject

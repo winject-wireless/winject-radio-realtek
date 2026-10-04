@@ -72,7 +72,7 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 
 **Shutdown.** `SIGINT`/`SIGTERM` write the shutdown eventfd; the reactor stops, the data thread is joined, sockets close. The interface is left in monitor mode so a restart does not flap it through managed mode. A signal during bring-up exits immediately.
 
-**Reset.** `reset` sets a flag that the 50 ms reactor timer picks up. It then sleeps 200 ms so the reply leaves, and `execv`s `/proc/self/exe` with the original arguments. The new process repeats bring-up from step 1 and applies the current slot, which matches the ESP32's reboot.
+**Reset.** `reset` sets a flag that the 50 ms reactor timer picks up. It then sleeps 200 ms so the reply leaves, and `execv`s `/proc/self/exe` with the original arguments. The new process repeats bring-up from step 1 and applies the current slot, which matches the ESP32's reboot. Clients that lose the `OK` reply confirm completion via `ts` in `tx_info` ([mplane.md](./mplane.md#device)).
 
 ## Configuration
 
@@ -92,7 +92,7 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | `net.inject_port` | no | `9000` | d-plane inject |
 | `net.forward_port` | no | `9210` | d-plane forward registration |
 | `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on all three ports |
-| `state.dir` | yes | | Slot files, `current`, `reset_id`. Created with mode 0700 when first needed |
+| `state.dir` | yes | | Slot files and `current`. Created with mode 0700 when first needed |
 | `tune.tx_queue_sz` | no | `20` | TX ring size, 1–64 |
 | `tune.rx_batch` | no | `16` | Datagrams/frames per `recvmmsg`, 1–64 |
 | `tune.sock_rcvbuf` | no | `4194304` | `SO_RCVBUF` on the packet socket |
@@ -217,7 +217,6 @@ The Realtek driver has no CCA control. `cca=true` is accepted and changes nothin
 |------|----------|
 | `slot0` … `slot9` | Radio settings and `rx_filter_addr3` ([format](./mplane.md#device)), written via `.tmp` + `fsync` + `rename` |
 | `current` | Number of the last slot saved or loaded; applied at startup |
-| `reset_id` | Last accepted `reset id=` |
 
 There is no network or tune state to save: those come from the config file.
 
@@ -283,7 +282,7 @@ Differences from the ESP32's identities:
 | `src/radio/Radiotap.*`, `TxProfile.h` | TX templates, RX parse; the lock-free template store |
 | `src/radio/RealtekRadio.*` | Apply and roll back radio settings, Addr3 filter, BPF attach |
 | `src/radio/RealtekBackends.*` | m-plane device and radio backends |
-| `src/radio/Settings.*` | Slot files, current slot, reset id |
+| `src/radio/Settings.*` | Slot files and current slot |
 | `src/radio/MplaneServer.*` | m-plane UDP socket |
 | `src/radio/DataPlane.*` | Data thread, its sockets and epoll loop |
 | `src/radio/Injector.*` | Inject ring, `sendmsg`, busy retry |

@@ -19,7 +19,6 @@ public:
                          int64_t start_us);
 
     mplane_status restart(std::optional<WinjectMode> mode) override;
-    mplane_status accept_reset_id(uint8_t id) override;
     network_config network() const override;
     mplane_status set_network(const network_config& cfg) override;
     tune_config tune() const override;

@@ -38,11 +38,6 @@ bool RealtekDeviceBackend::consume_reset_pending()
     return v;
 }
 
-mplane_status RealtekDeviceBackend::accept_reset_id(uint8_t id)
-{
-    return settings_->accept_reset_id(id);
-}
-
 network_config RealtekDeviceBackend::network() const
 {
     return network_config{};

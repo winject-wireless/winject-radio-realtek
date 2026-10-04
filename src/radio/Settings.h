@@ -28,17 +28,12 @@ public:
     void set_current_slot(uint8_t slot);
     std::optional<uint8_t> current_slot() const;
 
-    mplane_status accept_reset_id(uint8_t id);
-    bool reset_id_matches(uint8_t id) const;
-
 private:
     std::string state_dir_;
     std::optional<uint8_t> current_slot_;
-    std::optional<uint8_t> reset_id_;
 
     std::string slot_path(uint8_t slot) const;
     std::string current_path() const;
-    std::string reset_path() const;
     bool write_slot_file(uint8_t slot, const SlotData& data);
     bool read_slot_file(uint8_t slot, SlotData* out);
 };

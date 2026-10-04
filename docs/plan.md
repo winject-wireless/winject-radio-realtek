@@ -32,7 +32,7 @@ net.inject_port    = 9000
 net.forward_port   = 9210
 net.trusted_ipv4   = 192.168.253.10       # empty = accept any source
 
-state.dir          = /var/lib/winject-radio-realtek/wlx00c0cabce06f   # holds save/load slots and the last reset id
+state.dir          = /var/lib/winject-radio-realtek/wlx00c0cabce06f   # holds save/load slots
 ```
 
 On startup the program takes over the bring-up steps that `wfb_ng_bench.sh` does now:
@@ -53,7 +53,7 @@ On startup the program takes over the bring-up steps that `wfb_ng_bench.sh` does
 | `radio_tx_info` | Current settings plus `radio_rx rssi=` taken from the radiotap signal strength of the last frame that passed the filter. |
 | `rx_filter_addr3` | Rebuilds the kernel BPF filter (`wlan addr3 ca:fe:ba:be:hh:ll`), so frames from other domains never reach the program. |
 | `save` / `load` | Slot files in `state.dir`. |
-| `reset id=` | Store the id (a repeated id gets `EALREADY`), then re-initialise the interface or `exec` itself again. |
+| `reset` | Reply `OK`, then re-initialise the interface or `exec` itself again. Clients confirm a lost reply via `ts` in `tx_info` (see [aidocs/remove-restart-id.md](../aidocs/remove-restart-id.md)). |
 | `tx_info` / `rx_info` | Bytes queued on the TX socket (`SIOCOUTQ`) and on the RX socket (`SIOCINQ`). |
 | `network`, `tune_*` | `ENOSYS`, since the host OS owns networking. Alternatively, map `tune_*` onto socket buffer sizes. |
 | `test_wifi_tx`/`rx`(`_stat`) | Phase 3, using the same inject and capture paths. |
@@ -85,7 +85,7 @@ docs/        radio-realtek.md
 
 1. **P0, bring-up:** config file, choosing the dongle, monitor setup, and m-plane `ping`/`help`/`radio_tx_info`.
 2. **P1, data path:** inject and forward with FCS, `rx_filter_addr3`. Test with both local dongles: two radio instances (consoles 2201 and 2202, separate inject/forward ports) and two managers using `configuration/winject-tests/bw_a.cfg` and `bw_b.cfg`, plus `manager_bw_test.sh`.
-3. **P2, radio settings:** full `radio_tx`, `save`/`load`, and `reset id=`. Compare power settings with the `wfb_ng_power_test` TUI.
+3. **P2, radio settings:** full `radio_tx`, `save`/`load`, and `reset`. Compare power settings with the `wfb_ng_power_test` TUI.
 4. **P3:** test commands, `tx_info`/`rx_info`, systemd unit, docs.
 5. **P4, manager changes in `../winject-l3`:**
    - **Channels:** allow 5 GHz channels. The config parser currently rejects anything outside 1–14 (`Config.cpp:128`), and the DSSS check in `modulation_ok_for_channel` must also cover 5 GHz.
