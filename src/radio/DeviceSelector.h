@@ -25,9 +25,10 @@ public:
     bool resolve(const RadioConfig& radio, DeviceMatch* out,
                  std::string* error, std::vector<std::string>* seen_ifaces);
 
+    bool read_driver(const std::string& ifname, std::string* driver) const;
+
 private:
     std::string sysfs_root_;
-    bool read_driver(const std::string& ifname, std::string* driver) const;
     bool read_mac(const std::string& ifname, std::string* mac) const;
     bool ifindex_of(const std::string& ifname, int* out) const;
 };

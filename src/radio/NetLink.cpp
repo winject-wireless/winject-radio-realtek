@@ -13,7 +13,7 @@ namespace winject
 
 bool netlink_set_up(const std::string& ifname, bool up)
 {
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (fd < 0)
     {
         return false;

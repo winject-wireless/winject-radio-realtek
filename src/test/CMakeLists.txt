@@ -14,6 +14,7 @@ set(VENDOR_MPLANE ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/mplane)
 add_executable(winject-radio-realtek-tests
     ConfigTest.cpp
     DeviceSelectorTest.cpp
+    DeviceWatchTest.cpp
     ModulationTest.cpp
     RadiotapTest.cpp
     PowerCalTest.cpp
@@ -23,6 +24,7 @@ add_executable(winject-radio-realtek-tests
     ../radio/Config.cpp
     ../radio/Log.cpp
     ../radio/DeviceSelector.cpp
+    ../radio/DeviceWatch.cpp
     ../radio/Modulation.cpp
     ../radio/Radiotap.cpp
     ../radio/PowerCal.cpp

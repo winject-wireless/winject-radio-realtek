@@ -21,7 +21,7 @@ PacketSocket::~PacketSocket()
 bool PacketSocket::open(int ifindex, unsigned rcvbuf)
 {
     close();
-    fd_ = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    fd_ = socket(AF_PACKET, SOCK_RAW | SOCK_CLOEXEC, htons(ETH_P_ALL));
     if (fd_ < 0)
     {
         return false;

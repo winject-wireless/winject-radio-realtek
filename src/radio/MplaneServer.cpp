@@ -21,7 +21,7 @@ MplaneServer::MplaneServer(mplane_device_backend& device,
 bool MplaneServer::start(IOReactor& reactor, ResetHook on_reset)
 {
     on_reset_ = std::move(on_reset);
-    fd_ = socket(AF_INET, SOCK_DGRAM, 0);
+    fd_ = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (fd_ < 0)
     {
         return false;

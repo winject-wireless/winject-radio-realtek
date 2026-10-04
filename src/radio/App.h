@@ -5,6 +5,7 @@
 #include "Counters.h"
 #include "DataPlane.h"
 #include "DeviceSelector.h"
+#include "DeviceWatch.h"
 #include "IOReactor.h"
 #include "MplaneServer.h"
 #include "NetLink.h"
@@ -29,6 +30,8 @@ public:
 private:
     bool bring_up();
     void shutdown();
+    void restart();
+    bool fail_bring_up(const char* what);
 
     AppConfig cfg_;
     IOReactor reactor_;
@@ -41,6 +44,7 @@ private:
     std::unique_ptr<RealtekDeviceBackend> device_backend_;
     std::unique_ptr<RealtekRadioBackend> radio_backend_;
     std::unique_ptr<MplaneServer> mplane_;
+    std::unique_ptr<DeviceWatch> device_watch_;
     DeviceMatch dev_;
     PowerCal power_cal_;
     std::vector<uint8_t> channels_;

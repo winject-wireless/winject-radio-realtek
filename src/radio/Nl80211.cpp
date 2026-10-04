@@ -1,6 +1,7 @@
 #include "Nl80211.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <linux/nl80211.h>
 #include <net/if.h>
 #include <netlink/genl/ctrl.h>
@@ -203,6 +204,11 @@ int Nl80211::open()
     {
         nl_socket_free(sock);
         return -EIO;
+    }
+    const int nl_fd = nl_socket_get_fd(sock);
+    if (nl_fd >= 0)
+    {
+        fcntl(nl_fd, F_SETFD, FD_CLOEXEC);
     }
     nl_socket_set_msg_buf_size(sock, 8192);
     family_ = genl_ctrl_resolve(sock, "nl80211");

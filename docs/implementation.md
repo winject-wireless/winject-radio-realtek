@@ -258,7 +258,7 @@ Pack the filter with `mac_filter_pack` and store it in `RxFilter` (`atomic<uint6
 | `ping`, `help` | Handled by the vendored code |
 | `save <n>` | Write `state.dir/slot<n>` (§6.6) with the current radio and filter, then make it current |
 | `load <n>` | Read the slot (`ENOENT` if missing, `EIO` if it doesn't parse), apply the radio settings (§6.3) and the filter, make it current |
-| `reset` | Reply `OK`, wait 200 ms for the reply to flush, then `execv("/proc/self/exe", argv)`. The new process reruns bring-up and applies the current slot, which matches the ESP32's reboot behaviour. Clients confirm a lost reply via `ts` in `tx_info` ([mplane.md](mplane.md#device)) |
+| `reset` | Reply `OK`, wait 200 ms for the reply to flush, then `execv("/proc/self/exe", argv)`. The new process reruns bring-up and applies the current slot, which matches the ESP32's reboot behaviour. All fds are close-on-exec, so the new image starts with only stdin/stdout/stderr. Clients confirm a lost reply via `ts` in `tx_info` ([mplane.md](mplane.md#device)) |
 | `reset mode=OTA` | `EINVAL`; there is no OTA mode. `mode=WINJECT` is accepted and does nothing |
 | `test_wifi_*`, `test_ether_*` | `NOK ENODEV`; not implemented (§10) |
 | `network`, `tune_param`, `tune_tx_param`, `tune_rx_param` | `NOK ENOTSUP` (`mplane_status::unsupported`). The host OS owns networking, and sizing comes from the config file |
@@ -350,7 +350,7 @@ HT MCS, 13 bytes (the same as wfb-ng's `radiotap_header_ht`):
 
 Sockets:
 - UDP: bound to `net.bind:net.inject_port`, `SO_RCVBUF` 1 MiB, non-blocking.
-- `AF_PACKET`/`SOCK_RAW`/`htons(ETH_P_ALL)`: bound to the ifindex, `PACKET_QDISC_BYPASS=1`, non-blocking. One socket serves both TX and RX; see §8.3.
+- `AF_PACKET`/`SOCK_RAW`/`SOCK_CLOEXEC`/`htons(ETH_P_ALL)`: bound to the ifindex, `PACKET_QDISC_BYPASS=1`, non-blocking. One socket serves both TX and RX; see §8.3.
 
 Loop, run when the UDP socket is readable and the ring has room:
 
@@ -482,6 +482,16 @@ The vendored m-plane's own ESP32 tests (`mplane_args_test.cpp`, `mplane_commands
 
 `Nl80211`, `PacketSocket` and the sysfs root are behind small interfaces, so every test runs without root or hardware.
 
+## Device loss and recovery
+
+The radio identifies its dongle by the interface name from config (`DeviceSelector::resolve`) and the ifindex at bring-up. After that, `if_nametoindex(ifname)` is compared to the stored ifindex: zero means unplugged, a different non-zero value means replugged (same `wlx…` name, new netdev). Recovery also requires the configured driver (`rtl88xxau_wfb` by default); a dongle on stock `88XXau` is ignored until the right driver binds.
+
+**While running**, `DeviceWatch` listens for rtnetlink link events and runs the same check every 1 s. When the device has been back on the right driver with a stable ifindex for 1 s, the process `execv`s itself (same path as m-plane `reset`). m-plane keeps answering while the dongle is gone; `radio_tx` returns `io_error`.
+
+**At startup**, if the device is missing, the process waits forever (rtnetlink + 1 s scan, same debounce as recovery) instead of exiting. m-plane is not up until bring-up completes. Config errors still exit 1 immediately. If the device disappears during bring-up after the wait, the process restarts and waits again.
+
+Use a `wlx<mac>` selector (or `usb_port` / `mac` that resolves to one): plain `wlan0` names can change on replug. Recovery after replug adds about 1–2 s (debounce) on top of USB enumeration.
+
 ## 12. Bench procedure (P1 exit test)
 
 Hardware: Orange Pi 5, two RTL8812AU dongles, `wlx00c0cabce06f` and `wlx00c0cabce072`, attenuated RF path (43 dB pad).
@@ -494,7 +504,7 @@ Hardware: Orange Pi 5, two RTL8812AU dongles, `wlx00c0cabce06f` and `wlx00c0cabc
 
 Manager configs: copies of `bw_a.cfg` / `bw_b.cfg` with `winject.device = 127.0.0.1`, `winject.console = 2201|2202`, the matching `winject.inject_port` / `winject.forward_port`, `winject.radio_fcs = actual`, and `winject.local_ip` removed. Radio-b avoids 9001 and 9002 because `bw_test.py` listens on `127.0.0.1:9001` (B→A) and `127.0.0.1:9002` (A→B), which are the upstream addresses in `bw_a.cfg` / `bw_b.cfg`. The manager configs also need `manager.console_in` / `console_out` (2400/2401 and 2410/2411) so that `tools/bw_test.py` can drive them.
 
-The radios are selected by interface name, not by USB port, because the `wlx…` name follows the MAC and survives replugging into another port.
+The radios are selected by interface name, not by USB port, because the `wlx…` name follows the MAC and survives replugging into another port. `DeviceWatch` recovery relies on the same stable name.
 
 `scripts/bench_two_radios.sh` runs the whole test:
 1. Starts both radios with `sudo`.
@@ -562,7 +572,7 @@ Rates are in Mbit/s, with loss in brackets. Throughput follows the offer, and th
 |---|---|---|
 | ENOBUFS backpressure with `MaxTxBufLen` | Not measured; another errno or a silent drop would break §8.2's retry | Measure in P2; fall back to pacing with `winject.tx_burst_size` |
 | Injected frames looping back to RX | wfb-ng sees them (marked with `TX_FLAGS`); dropped in §8.3, but they cost CPU | Count in `dropped_filter_mismatched`; check the rate on the bench |
-| `88XXau` vs `88XXau_wfb` both loaded | A dongle may bind to the stock driver after replug | Driver check at startup; blacklist `88XXau` in `/etc/modprobe.d` |
+| `88XXau` vs `88XXau_wfb` both loaded | A dongle may bind to the stock driver after replug | Driver check at startup and on recovery; blacklist `88XXau` in `/etc/modprobe.d` |
 | m-plane power range 2–20 dBm vs measured −11.5 to 18.8 dBm | 19–20 dBm clamp to index 63 (18.8 dBm), and −11.5 to 2 dBm cannot be requested | Clamping is logged, and the reported value is the requested one, as on the ESP32. Widen `WIFI_TX_POWER_DBM_MIN` together with the manager's `winject.power` range if lower power is needed |
 | TX power override is driver-global | Two radios on one host overwrite each other's power (§7) | Same `tx_power` on all radios per host, or patch the driver for a per-adapter override (P4b) |
 | `cca=false` from an existing manager config | Manager fails to program the radio | Remove `winject.cca` from configs used with this radio |

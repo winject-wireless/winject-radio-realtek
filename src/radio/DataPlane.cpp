@@ -51,9 +51,9 @@ Injector* DataPlane::injector()
 bool DataPlane::start()
 {
     shutdown_fd_ = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    inject_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
-    reg_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
-    fwd_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
+    inject_fd_ = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    reg_fd_ = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    fwd_fd_ = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (shutdown_fd_ < 0 || inject_fd_ < 0 || reg_fd_ < 0 || fwd_fd_ < 0)
     {
         return false;
