@@ -4,6 +4,7 @@
 #include "mplane_args.h"
 #include "mplane_reply.h"
 #include "mplane_req_id.h"
+#include "mplane_version.h"
 
 #include <string.h>
 #include <strings.h>
@@ -87,7 +88,9 @@ bool parse_optional_mac(const char* value, std::optional<mac_address>* out)
 const mplane_commands::command mplane_commands::k_commands[] = {
     {"help", "?", "", needs::device, &mplane_commands::cmd_help},
     {"ping", "p", "", needs::device, &mplane_commands::cmd_ping},
-    {"reset", "r", "[mode=WINJECT|OTA]", needs::device, &mplane_commands::cmd_reset},
+    {"version", "ver", "", needs::device, &mplane_commands::cmd_version},
+    {"reset", "r", "[mode=WINJECT|OTA]", needs::device,
+     &mplane_commands::cmd_reset},
     {"save", nullptr, "<slot 0-9>  (network, radio, rx filter, tune)",
      needs::device, &mplane_commands::cmd_save},
     {"load", nullptr, "<slot 0-9>", needs::device, &mplane_commands::cmd_load},
@@ -236,6 +239,26 @@ void mplane_commands::cmd_ping(char* args, mplane_reply& reply)
         return;
     }
     reply.write("pong\n");
+}
+
+void mplane_commands::cmd_version(char* args, mplane_reply& reply)
+{
+    if (!args_empty(args))
+    {
+        reply.nok(mplane_status::invalid);
+        return;
+    }
+    const char* ver = device_.version();
+    uint8_t major = 0;
+    uint8_t minor = 0;
+    uint16_t patch = 0;
+    if (!mplane_parse_version(ver, &major, &minor, &patch))
+    {
+        reply.nok(mplane_status::io_error);
+        return;
+    }
+    // Frozen across protocol versions: docs/mplane.md § Version discovery.
+    reply.print("OK version ver=%s proto=%u.%u\n", ver, major, minor);
 }
 
 void mplane_commands::cmd_reset(char* args, mplane_reply& reply)

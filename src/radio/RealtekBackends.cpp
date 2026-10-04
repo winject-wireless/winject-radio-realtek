@@ -1,6 +1,7 @@
 #include "RealtekBackends.h"
 
 #include "Modulation.h"
+#include "Version.h"
 
 #include <climits>
 #include <time.h>
@@ -88,6 +89,11 @@ int64_t RealtekDeviceBackend::uptime_us() const
     const int64_t now =
         ts.tv_sec * 1000000LL + ts.tv_nsec / 1000;
     return now - start_us_;
+}
+
+const char* RealtekDeviceBackend::version() const
+{
+    return WINJECT_VERSION_STRING;
 }
 
 RealtekRadioBackend::RealtekRadioBackend(SharedRadioState* state,

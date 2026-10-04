@@ -71,9 +71,8 @@ The file uses the manager's `key = value` format, and `#` starts a comment. The 
 | `radio.tx_retry_us` | no | `50000` | How long a frame may wait for the driver to accept it before it counts as `dropped_wifi` (§8.2) |
 | `net.bind` | no | `0.0.0.0` | Address for all three UDP sockets |
 | `net.console_port` | no | `2201` | m-plane |
-| `net.inject_port` | no | `9000` | d-plane inject |
-| `net.forward_port` | no | `9210` | d-plane forward registration |
-| `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on all three ports |
+| `net.dplane_port` | no | `9000` | d-plane (inject, registration, forward) |
+| `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on m-plane and d-plane |
 | `state.dir` | yes | | Slot files. Created with mode 0700 if missing |
 | `tune.tx_queue_sz` | no | `20` | TX ring size, 1–64 |
 | `tune.rx_batch` | no | `16` | Frames per `recvmmsg`, 1–64 |
@@ -148,7 +147,9 @@ The `config.h` shim supplies every macro the vendored files use:
 | `ETHER_TEST_MTU_MAX` | `1472` | Only used by `test_ether_*`, which is not implemented here |
 | `WIFI_TX_QUEUE_DEFAULT` / `MAX`, `WIFI_RX_QUEUE_*`, `WIFI_*_RING_*`, `NETWORK_*` | ESP32 values | Only reached through `tune_*` / `network`, which reply `ENOTSUP` here |
 
-`sync_mplane.sh <commit>` re-copies the files and runs the tests. The vendored code keeps its own snake_case style and is listed in `.clang-format-ignore`.
+`sync_mplane.sh [commit-ref]` copies m-plane sources from the ESP32 worktree
+(recorded in `vendor/mplane/VERSION`; default `HEAD`). It does not check out the
+ESP32 repo. Re-run tests after syncing. The vendored code keeps its own snake_case style and is listed in `.clang-format-ignore`.
 
 `MplaneServer` (ours) owns the UDP socket. For each datagram it truncates to 1499 bytes, NUL-terminates it, and checks `net.trusted_ipv4`. It then calls `mplane_commands::handle_text()` with a `mplane_reply` that appends to a 16 KiB buffer, and sends the buffer back to the source address in pieces of at most 16384 bytes. The `cmd:<u8>` prefix and `OK:<id>` decoration are handled inside the vendored `handle_line` / `mplane_req_id_reply`.
 
@@ -349,7 +350,7 @@ HT MCS, 13 bytes (the same as wfb-ng's `radiotap_header_ht`):
 ### 8.2 Inject (`Injector`, data thread)
 
 Sockets:
-- UDP: bound to `net.bind:net.inject_port`, `SO_RCVBUF` 1 MiB, non-blocking.
+- UDP: bound to `net.bind:net.dplane_port`, `SO_RCVBUF` 1 MiB, non-blocking.
 - `AF_PACKET`/`SOCK_RAW`/`SOCK_CLOEXEC`/`htons(ETH_P_ALL)`: bound to the ifindex, `PACKET_QDISC_BYPASS=1`, non-blocking. One socket serves both TX and RX; see §8.3.
 
 Loop, run when the UDP socket is readable and the ring has room:
@@ -357,9 +358,10 @@ Loop, run when the UDP socket is readable and the ring has room:
 ```
 n = recvmmsg(udp, batch of tune.rx_batch, MSG_DONTWAIT), each buffer 1500 bytes, flags MSG_TRUNC
 for each datagram:
-    tx.ether_pkt++
     if trusted_ipv4 set and src != trusted: tx.dropped_invalid_frame++ ; continue
+    if len 1..23: register peer ; continue
     if len < 24 or len > 1472 or truncated: tx.dropped_invalid_frame++ ; continue
+    tx.ether_pkt++
     if ring full: tx.dropped_tx_queue++ ; continue
     ring.push({buf, len, t_enqueue = now})
 drain_ring()
@@ -404,7 +406,7 @@ sendmmsg(fwd_udp, queued)  → ether_pkt += sent, dropped_send_failed += failed
 ```
 
 - Frames with `F_BADFCS` are forwarded unchanged; the manager's CRC check counts them. Today the driver drops them before monitor mode (§1), so they appear only with the §13 patch.
-- **Peer registration.** Any datagram arriving on `net.forward_port` (from `net.trusted_ipv4` when set) makes its source address the peer. The manager sends a 1-byte datagram from its inject socket about once per second (`RadioManager::k_register_interval_ticks`). The most recent sender wins, as on the ESP32.
+- **Peer registration.** Any d-plane datagram of length 1–23 bytes (from `net.trusted_ipv4` when set) makes its source the peer. The manager sends a 1-byte datagram about once per second. The most recent sender wins. Forward uses the same socket.
 - `rx.dropped_rx_queue` = the increase in `tp_drops` from `PACKET_STATISTICS`, i.e. frames the kernel dropped because the socket buffer was full.
 - The radiotap parser returns `{rt_len, flags, has_tx_flags, dbm_antsignal, rate/mcs}`. It must handle extended present bitmaps and per-field alignment. The driver emits `EXT` and vendor namespaces (`rtw_recv.c:3681,3712`), so a hand-written fixed-offset parser would break.
 

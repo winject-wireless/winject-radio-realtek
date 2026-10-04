@@ -26,6 +26,7 @@ public:
     mplane_status save(uint8_t slot) override;
     mplane_status load(uint8_t slot) override;
     int64_t uptime_us() const override;
+    const char* version() const override;
 
     bool consume_reset_pending();
 

@@ -98,6 +98,11 @@ public:
         return uptime_us_;
     }
 
+    const char* version() const override
+    {
+        return "v9.8.7";
+    }
+
     int restarts = 0;
     int64_t uptime_us_ = 123456789;
     std::optional<WinjectMode> restart_mode;
@@ -327,6 +332,17 @@ protected:
     mplane_commands commands{device, &radio, &test};
 };
 }  // namespace
+
+// frozen: changing this breaks version discovery for every older and newer peer.
+TEST_F(MplaneCommandsTest, VersionDiscoveryFrozen)
+{
+    EXPECT_EQ(run("version"), "OK version ver=v9.8.7 proto=9.8\n");
+    EXPECT_EQ(run("ver"), "OK version ver=v9.8.7 proto=9.8\n");
+    EXPECT_EQ(run("cmd:7 version"), "OK:7 version ver=v9.8.7 proto=9.8\n");
+    EXPECT_EQ(run("version x=1"), "NOK EINVAL\n");
+    EXPECT_EQ(run("bogus"), "NOK ENOSYS\n");
+    EXPECT_EQ(run("cmd:7 bogus"), "NOK:7 ENOSYS\n");
+}
 
 TEST_F(MplaneCommandsTest, PingAndAlias)
 {

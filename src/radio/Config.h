@@ -26,8 +26,7 @@ struct NetConfig
 {
     std::string bind_addr = "0.0.0.0";
     uint16_t console_port = 2201;
-    uint16_t inject_port = 9000;
-    uint16_t forward_port = 9210;
+    uint16_t dplane_port = 9000;
     std::string trusted_ipv4;
 };
 

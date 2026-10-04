@@ -28,8 +28,7 @@ radio.power_cal    = /etc/winject/power_cal.json   # same schema as wfb_ng_power
 
 net.bind           = 0.0.0.0              # 127.0.0.1 when the manager is on the same host
 net.console_port   = 2201                 # not 22: sshd already uses it on a Linux host
-net.inject_port    = 9000
-net.forward_port   = 9210
+net.dplane_port    = 9000
 net.trusted_ipv4   = 192.168.253.10       # empty = accept any source
 
 state.dir          = /var/lib/winject-radio-realtek/wlx00c0cabce06f   # holds save/load slots

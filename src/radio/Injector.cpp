@@ -1,5 +1,6 @@
 #include "Injector.h"
 
+#include "DplaneClassify.h"
 #include "NetUtil.h"
 
 #include <errno.h>
@@ -29,6 +30,11 @@ int Injector::udp_fd() const
 void Injector::set_udp_fd(int fd)
 {
     udp_fd_ = fd;
+}
+
+void Injector::set_on_register(std::function<void(const sockaddr_in& peer)> fn)
+{
+    on_register_ = std::move(fn);
 }
 
 bool Injector::trusted_peer(const sockaddr_in& peer) const
@@ -97,7 +103,6 @@ void Injector::on_udp_readable()
     }
     for (int i = 0; i < n; ++i)
     {
-        state_->tx.ether_pkt.fetch_add(1, std::memory_order_relaxed);
         const size_t len = msgs[i].msg_len;
         const bool trunc =
             (msgs[i].msg_hdr.msg_flags & MSG_TRUNC) != 0;
@@ -106,11 +111,21 @@ void Injector::on_udp_readable()
             state_->tx.dropped_invalid_frame.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
-        if (len < 24 || len > 1472 || trunc)
+        switch (dplane_classify(static_cast<uint32_t>(len), trunc))
         {
+        case DplaneKind::registration:
+            if (on_register_)
+            {
+                on_register_(peers[i]);
+            }
+            continue;
+        case DplaneKind::invalid:
             state_->tx.dropped_invalid_frame.fetch_add(1, std::memory_order_relaxed);
             continue;
+        case DplaneKind::mpdu:
+            break;
         }
+        state_->tx.ether_pkt.fetch_add(1, std::memory_order_relaxed);
         if (ring_.size() >= cfg_.ring_size)
         {
             state_->tx.dropped_tx_queue.fetch_add(1, std::memory_order_relaxed);

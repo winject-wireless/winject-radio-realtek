@@ -1,11 +1,12 @@
 #include "Forwarder.h"
 
 #include "Fcs.h"
-#include "NetUtil.h"
+#include "Log.h"
 #include "Radiotap.h"
 #include "config_types.h"
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <sys/socket.h>
 
@@ -22,19 +23,9 @@ Forwarder::Forwarder(SharedRadioState* state, IPacketSocket* pkt, Config cfg)
     }
 }
 
-int Forwarder::reg_fd() const
-{
-    return reg_fd_;
-}
-
 int Forwarder::fwd_fd() const
 {
     return fwd_fd_;
-}
-
-void Forwarder::set_reg_fd(int fd)
-{
-    reg_fd_ = fd;
 }
 
 void Forwarder::set_fwd_fd(int fd)
@@ -42,31 +33,18 @@ void Forwarder::set_fwd_fd(int fd)
     fwd_fd_ = fd;
 }
 
-bool Forwarder::trusted_peer(const sockaddr_in& peer) const
+void Forwarder::register_peer(const sockaddr_in& peer)
 {
-    return sockaddr_ipv4_trusted(peer, cfg_.trusted_ipv4);
-}
-
-void Forwarder::on_reg_readable()
-{
-    uint8_t buf[64];
-    sockaddr_in peer = {};
-    socklen_t len = sizeof(peer);
-    while (true)
+    const bool changed =
+        !have_peer_ || peer_.sin_addr.s_addr != peer.sin_addr.s_addr ||
+        peer_.sin_port != peer.sin_port;
+    peer_ = peer;
+    have_peer_ = true;
+    if (changed)
     {
-        const ssize_t n =
-            recvfrom(reg_fd_, buf, sizeof(buf), MSG_DONTWAIT,
-                     reinterpret_cast<sockaddr*>(&peer), &len);
-        if (n <= 0)
-        {
-            break;
-        }
-        if (!trusted_peer(peer))
-        {
-            continue;
-        }
-        peer_ = peer;
-        have_peer_ = true;
+        char addr[INET_ADDRSTRLEN] = {};
+        inet_ntop(AF_INET, &peer.sin_addr, addr, sizeof(addr));
+        LOG_INF("peer %s:%u", addr, ntohs(peer.sin_port));
     }
 }
 

@@ -13,6 +13,8 @@ set(VENDOR_MPLANE ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/mplane)
 
 add_executable(winject-radio-realtek-tests
     ConfigTest.cpp
+    DplaneClassifyTest.cpp
+    MplaneVersionTest.cpp
     DeviceSelectorTest.cpp
     DeviceWatchTest.cpp
     ModulationTest.cpp
@@ -31,6 +33,7 @@ add_executable(winject-radio-realtek-tests
     ../radio/RxFilterBpf.cpp
     ../radio/Fcs.cpp
     ../radio/Settings.cpp
+    ../radio/DplaneClassify.cpp
     mplane_args_test.cpp
     mplane_commands_test.cpp
     ${VENDOR_MPLANE}/config_types.cpp
@@ -38,10 +41,12 @@ add_executable(winject-radio-realtek-tests
     ${VENDOR_MPLANE}/mplane_commands.cpp
     ${VENDOR_MPLANE}/mplane_reply.cpp
     ${VENDOR_MPLANE}/mplane_req_id.cpp
+    ${VENDOR_MPLANE}/mplane_version.cpp
 )
 target_include_directories(winject-radio-realtek-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../radio
     ${VENDOR_MPLANE}
+    ${CMAKE_BINARY_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../vendor/radiotap
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${bfc_SOURCE_DIR}/src

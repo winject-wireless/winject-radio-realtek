@@ -23,8 +23,7 @@ The radio is a bridge between three UDP sockets and one monitor-mode WiFi interf
 | Plane | Transport | Purpose |
 |-------|-----------|---------|
 | m-plane | UDP `net.console_port` (2201) | Text commands: radio settings, Addr3 filter, counters, slots, reset ([mplane.md](./mplane.md)) |
-| d-plane inject | UDP `net.inject_port` (9000) | One raw MPDU per datagram, host → air |
-| d-plane forward | UDP `net.forward_port` (9210) | Peer registration; one received MPDU + 4-byte FCS per datagram, air → host |
+| d-plane | UDP `net.dplane_port` (9000) | Inject, peer registration, and forward on one port (see [length table](#d-plane-lengths)) |
 
 One process drives one dongle. Run one copy per dongle with its own config file, on the manager's host (`net.bind = 127.0.0.1`) or on a separate board.
 
@@ -89,9 +88,8 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | `radio.tx_retry_us` | no | `50000` | How long a frame may wait on a busy driver before it counts as `dropped_wifi` |
 | `net.bind` | no | `0.0.0.0` | Address for all UDP sockets |
 | `net.console_port` | no | `2201` | m-plane |
-| `net.inject_port` | no | `9000` | d-plane inject |
-| `net.forward_port` | no | `9210` | d-plane forward registration |
-| `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on all three ports |
+| `net.dplane_port` | no | `9000` | d-plane (inject, registration, forward). `net.inject_port` / `net.forward_port` are rejected |
+| `net.trusted_ipv4` | no | empty | If set, datagrams from other sources are dropped on m-plane and d-plane |
 | `state.dir` | yes | | Slot files and `current`. Created with mode 0700 when first needed |
 | `tune.tx_queue_sz` | no | `20` | TX ring size, 1–64 |
 | `tune.rx_batch` | no | `16` | Datagrams/frames per `recvmmsg`, 1–64 |
@@ -105,12 +103,13 @@ These replace the ESP32's m-plane `tune_*` and `network` commands, which reply `
 `Injector` (`src/radio/Injector.cpp`) runs on the data thread.
 
 ```
-on inject socket readable:
-  n = recvmmsg(inject socket, up to tune.rx_batch datagrams of ≤1500 bytes)
+on d-plane socket readable:
+  n = recvmmsg(d-plane socket, up to tune.rx_batch datagrams of ≤1500 bytes)
   for each datagram:
-    ether_pkt++
     untrusted source                        → dropped_invalid_frame
+    length 1..23 (registration)           → register peer, not counted in ether_pkt
     length outside 24..1472, or truncated   → dropped_invalid_frame
+    ether_pkt++   (MPDU-sized only)
     ring holds tune.tx_queue_sz frames      → dropped_tx_queue
     copy into the ring with its enqueue time
   drain_ring()
@@ -155,7 +154,18 @@ on packet socket readable:
 - **Radiotap parsing** uses the radiotap-library iterator (`src/vendor/radiotap/`). The driver emits extended present bitmaps and vendor namespaces, so fixed offsets would break.
 - **Own frames.** The driver loops about 90 % of the frames this radio injects back into its own RX path, marked with radiotap `TX_FLAGS`. They are dropped and show up in `dropped_filter_mismatched`.
 - **FCS.** `rtl88xxau_wfb` delivers every frame with `F_FCS` set and the real on-air FCS appended, so the trailer is forwarded as received. The driver frees frames with a CRC or ICV error before monitor mode (`usb_ops_linux.c`), so on-air corruption shows up as missing frames, not as FCS failures at the manager. Frames with `F_BADFCS` would be forwarded unchanged if a patched driver passed them up.
-- **Peer registration.** Any datagram arriving on `net.forward_port` (from `net.trusted_ipv4` when set) makes its source the peer; the most recent sender wins. The manager sends one about every second.
+- **Peer registration.** Any d-plane datagram of length 1–23 bytes (from `net.trusted_ipv4` when set) registers its source as the peer; the most recent sender wins. The manager sends one about every second. Forwarded frames are sent from the same d-plane socket.
+
+### D-plane lengths
+
+| Datagram size (bytes) | Treatment |
+|----------------------|-----------|
+| 0 | `dropped_invalid_frame` |
+| 1–23 | Peer registration (not counted in `tx_info ether_pkt`) |
+| 24–1472 | MPDU inject |
+| >1472 or truncated | `dropped_invalid_frame` |
+
+`tx_info ether_pkt` counts MPDU-sized datagrams (24–1472) plus invalid 0 and >1472 sizes; registrations are not counted.
 
 ### Kernel Addr3 filter
 

@@ -37,9 +37,7 @@ private:
     std::thread thread_;
     std::atomic<bool> running_{false};
     int shutdown_fd_ = -1;
-    int inject_fd_ = -1;
-    int reg_fd_ = -1;
-    int fwd_fd_ = -1;
+    int dplane_fd_ = -1;
 };
 
 }  // namespace winject

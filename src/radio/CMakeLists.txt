@@ -11,8 +11,12 @@ add_library(winject-mplane STATIC
     ${VENDOR_MPLANE}/mplane_commands.cpp
     ${VENDOR_MPLANE}/mplane_reply.cpp
     ${VENDOR_MPLANE}/mplane_req_id.cpp
+    ${VENDOR_MPLANE}/mplane_version.cpp
 )
-target_include_directories(winject-mplane PUBLIC ${VENDOR_MPLANE})
+target_include_directories(winject-mplane PUBLIC
+    ${VENDOR_MPLANE}
+    ${CMAKE_BINARY_DIR}/include
+)
 target_compile_options(winject-mplane PRIVATE -Wno-unused-parameter)
 
 add_library(winject-radiotap STATIC
@@ -40,6 +44,7 @@ add_executable(winject-radio-realtek
     Injector.cpp
     Forwarder.cpp
     DataPlane.cpp
+    DplaneClassify.cpp
     Settings.cpp
     RealtekRadio.cpp
     RealtekBackends.cpp
@@ -50,6 +55,7 @@ add_executable(winject-radio-realtek
 target_include_directories(winject-radio-realtek PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${VENDOR_MPLANE}
+    ${CMAKE_BINARY_DIR}/include
     ${bfc_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${LIBNL_INCLUDE_DIRS}

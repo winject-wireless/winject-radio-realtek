@@ -2,6 +2,7 @@
 
 #include "Log.h"
 #include "Modulation.h"
+#include "Version.h"
 
 #include <bfc/timer.hpp>
 #include <csignal>
@@ -256,6 +257,8 @@ int App::run(int argc, char** argv)
     g_app = this;
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
+
+    LOG_INF("winject-radio-realtek %s", WINJECT_VERSION_STRING);
 
     if (!bring_up())
     {

@@ -62,8 +62,8 @@ bool AppConfig::load(const std::string& path, std::string* error)
         "radio.device",       "radio.usb_port",    "radio.mac",
         "radio.driver",       "radio.regdom",      "radio.bandwidth",
         "radio.txpower",      "radio.rx_bpf",      "radio.tx_retry_us",
-        "net.bind",           "net.console_port",  "net.inject_port",
-        "net.forward_port",   "net.trusted_ipv4",  "state.dir",
+        "net.bind",           "net.console_port",  "net.dplane_port",
+        "net.trusted_ipv4",  "state.dir",
         "tune.tx_queue_sz",   "tune.rx_batch",     "tune.sock_rcvbuf",
         "log.level",
     };
@@ -81,6 +81,13 @@ bool AppConfig::load(const std::string& path, std::string* error)
         if (eq != std::string::npos)
         {
             const std::string key = trim(t.substr(0, eq));
+            if (key == "net.inject_port" || key == "net.forward_port")
+            {
+                *error =
+                    "net.inject_port / net.forward_port were replaced by "
+                    "net.dplane_port";
+                return false;
+            }
             if (k_known.find(key) == k_known.end())
             {
                 *error = "unknown key " + key;
@@ -172,23 +179,14 @@ bool AppConfig::load(const std::string& path, std::string* error)
         }
         net.console_port = static_cast<uint16_t>(*p);
     }
-    if (auto p = parser.as<unsigned>("net.inject_port"))
+    if (auto p = parser.as<unsigned>("net.dplane_port"))
     {
         if (*p == 0 || *p > 65535)
         {
-            *error = "invalid net.inject_port";
+            *error = "invalid net.dplane_port";
             return false;
         }
-        net.inject_port = static_cast<uint16_t>(*p);
-    }
-    if (auto p = parser.as<unsigned>("net.forward_port"))
-    {
-        if (*p == 0 || *p > 65535)
-        {
-            *error = "invalid net.forward_port";
-            return false;
-        }
-        net.forward_port = static_cast<uint16_t>(*p);
+        net.dplane_port = static_cast<uint16_t>(*p);
     }
     if (auto t = parser.arg("net.trusted_ipv4"))
     {

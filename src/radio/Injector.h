@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <deque>
+#include <functional>
 #include <netinet/in.h>
 #include <optional>
 #include <string>
@@ -30,6 +31,7 @@ public:
 
     int udp_fd() const;
     void set_udp_fd(int fd);
+    void set_on_register(std::function<void(const sockaddr_in& peer)> fn);
     void on_udp_readable();
     void on_retry_timer();
     bool retry_timer_armed() const;
@@ -47,6 +49,7 @@ private:
     void drain_ring();
     bool trusted_peer(const sockaddr_in& peer) const;
 
+    std::function<void(const sockaddr_in&)> on_register_;
     SharedRadioState* state_;
     IPacketSocket* pkt_;
     Config cfg_;

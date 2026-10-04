@@ -1,6 +1,6 @@
 # winject-radio-realtek
 
-Linux radio service for RTL8812AU (`rtl88xxau_wfb`): same m-plane and UDP inject/forward ports as the ESP32 radio.
+Linux radio service for RTL8812AU (`rtl88xxau_wfb`): same m-plane and single d-plane UDP port as the ESP32 radio. Versioning: [docs/versioning.md](docs/versioning.md).
 
 ## Build
 
