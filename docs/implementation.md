@@ -502,9 +502,9 @@ Hardware: Orange Pi 5, two RTL8812AU dongles, `wlx00c0cabce06f` and `wlx00c0cabc
 |---|---|---|
 | selector | `radio.device = wlx00c0cabce06f` | `radio.device = wlx00c0cabce072` |
 | `net.bind` | `127.0.0.1` | `127.0.0.1` |
-| console / inject / forward | 2201 / 9000 / 9210 | 2202 / 9003 / 9213 |
+| console / d-plane | 2201 / 9000 | 2202 / 9003 |
 
-Manager configs: copies of `bw_a.cfg` / `bw_b.cfg` with `winject.device = 127.0.0.1`, `winject.console = 2201|2202`, the matching `winject.inject_port` / `winject.forward_port`, `winject.radio_fcs = actual`, and `winject.local_ip` removed. Radio-b avoids 9001 and 9002 because `bw_test.py` listens on `127.0.0.1:9001` (B→A) and `127.0.0.1:9002` (A→B), which are the upstream addresses in `bw_a.cfg` / `bw_b.cfg`. The manager configs also need `manager.console_in` / `console_out` (2400/2401 and 2410/2411) so that `tools/bw_test.py` can drive them.
+Manager configs: copies of winject-l3 `configuration/winject-tests/realtek/bw_{a,b}.cfg` with `winject.device = 127.0.0.1`, `winject.console = 2201|2202`, matching `winject.dplane_port`, `winject.radio_fcs = actual`, and `manager.console_in` on 2400 (A) or 2410 (B) so `tools/bw_test.py` can drive the managers. Radio-b uses d-plane 9003 because `bw_test.py` listens on `127.0.0.1:9001` and `127.0.0.1:9002` for the upstream paths in `bw_a.cfg` / `bw_b.cfg`.
 
 The radios are selected by interface name, not by USB port, because the `wlx…` name follows the MAC and survives replugging into another port. `DeviceWatch` recovery relies on the same stable name.
 

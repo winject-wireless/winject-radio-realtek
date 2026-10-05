@@ -211,12 +211,15 @@ Occupancy fields are current values; the other fields are counters since process
 
 ## D-plane
 
-The d-plane ports have the same roles as on the ESP32, but they are set in the radio config instead of being fixed.
+One UDP port (`net.dplane_port`, default **9000**) on `net.bind` serves inject, peer registration, and forward (same length rules as the ESP32).
 
-| Direction | Port | Behavior |
-|-----------|------|----------|
-| Inject (host → air) | UDP `net.inject_port`, default **9000** | Each datagram is one MPDU, 24–1472 bytes, header included, no FCS. Datagrams of other sizes, truncated ones, and (with `net.trusted_ipv4`) ones from other sources are dropped as `dropped_invalid_frame`. The radio prepends a radiotap header for the current modulation with `TX_FLAGS = NOACK`, so the driver never waits for ACKs or retries. Sequence numbers and all addresses are sent as the host wrote them |
-| Forward (air → host) | UDP `net.forward_port`, default **9210** | Any datagram sent to this port registers its source as the forward peer (with `net.trusted_ipv4`, only from that address); the most recent sender wins. The manager re-registers about once per second. Each accepted frame is sent to the peer as **MPDU ‖ 4-byte FCS**, from an ephemeral port on `net.bind` |
+| Payload size | Meaning |
+|--------------|---------|
+| 1–23 bytes | Registration: source becomes the forward peer; most recent sender wins (manager sends a 1-byte datagram about once per second) |
+| 24–1472 bytes | MPDU to inject (header included, no FCS). With `net.trusted_ipv4`, other sources are dropped as `dropped_invalid_frame` |
+| 0 bytes, over 1472, truncated | Dropped (counted as today where a counter exists) |
+
+Injected MPDUs are sent to the air with a radiotap header for the current modulation (`TX_FLAGS = NOACK`). Accepted received frames are sent to the registered peer as **MPDU ‖ 4-byte FCS**, from the same d-plane socket.
 
 The 4-byte trailer is the on-air FCS (CRC-32, little-endian), so `radio_caps_info` reports `fcs=ACTUAL` and the receiver checks `crc32(MPDU) == trailer`. If the driver does not include the FCS (radiotap `F_FCS` clear), the radio computes it.
 
