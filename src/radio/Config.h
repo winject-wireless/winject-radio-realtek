@@ -14,7 +14,7 @@ struct RadioConfig
     std::string device;
     std::string usb_port;
     std::string mac;
-    std::string driver = "rtl88xxau_wfb";
+    std::string driver = "rtl88xxau_winject";
     std::string regdom = "BO";
     unsigned bandwidth = 20;
     std::string txpower;  // txpower.csv; relative paths resolve against the config file
