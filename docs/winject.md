@@ -102,7 +102,7 @@ These replace the ESP32's m-plane `tune_*` and `network` commands, which reply `
 
 ## Receive gain
 
-In monitor mode the driver's dynamic gain control has no associated peer to anchor on and tends to park the receiver too sensitive, which shows up as steady frame loss from false alarms. `radio.rx_igi` and `radio.rx_cck_pd` pin the two values instead. They are written, after monitor mode is up, to the driver's `rtw_monitor_igi` and `rtw_monitor_cck_pd` module parameters (`/sys/bus/usb/drivers/<radio.driver>/module/parameters/`), so they need the winject driver build (`winject-wireless/rtl8812au`, branch `wfb-5.2.20`).
+In monitor mode the driver's dynamic gain control has no associated peer to anchor on and tends to park the receiver too sensitive, which shows up as steady frame loss from false alarms. `radio.rx_igi` and `radio.rx_cck_pd` pin the two values instead. They are written, after monitor mode is up, to the driver's `rtw_monitor_igi` and `rtw_monitor_cck_pd` module parameters (`/sys/bus/usb/drivers/<radio.driver>/module/parameters/`), so they need the winject driver build (`winject-wireless/rtl8812au`, branch `winject-5.2.20`).
 
 - `0` means automatic and is written back, so the config file is always the source of truth.
 - A higher IGI trades weak-signal sensitivity for fewer false alarms: a link works down to about (IGI − 110) − 8 dB. Bench measurements on an AWUS036ACS put `0x3c` as the safest value and `0x44` as slightly better at strong signal.
