@@ -1,5 +1,6 @@
 #include "App.h"
 
+#include "DriverTune.h"
 #include "Log.h"
 #include "Modulation.h"
 #include "Version.h"
@@ -137,6 +138,9 @@ bool App::bring_up()
     {
         return fail_bring_up("monitor mode failed");
     }
+
+    // The gain overrides only take effect in monitor mode, so apply them now.
+    apply_rx_gain(cfg_.radio);
 
     uint32_t wiphy = 0;
     if (nl_->get_wiphy(dev_.ifindex, &wiphy) != 0)

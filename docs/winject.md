@@ -86,6 +86,8 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | `radio.txpower` | yes | | Path to the calibration CSV; relative to the config file's directory |
 | `radio.rx_bpf` | no | `false` | Also filter Addr3 in the kernel ([below](#kernel-addr3-filter)) |
 | `radio.tx_retry_us` | no | `50000` | How long a frame may wait on a busy driver before it counts as `dropped_wifi` |
+| `radio.rx_igi` | no | `0` (auto) | Fixed receive gain (IGI) in monitor mode, `0x1c`–`0x5a`, hex or decimal ([below](#receive-gain)) |
+| `radio.rx_cck_pd` | no | `0` (auto) | Fixed CCK packet-detection threshold in monitor mode, `0x10`–`0xf0` ([below](#receive-gain)) |
 | `net.bind` | no | `0.0.0.0` | Address for all UDP sockets |
 | `net.console_port` | no | `2201` | m-plane |
 | `net.dplane_port` | no | `9000` | d-plane (inject, registration, forward). `net.inject_port` / `net.forward_port` are rejected |
@@ -97,6 +99,15 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | `log.level` | no | `info` | `error`, `warn`, `info`, `debug`. Logs go to stderr |
 
 These replace the ESP32's m-plane `tune_*` and `network` commands, which reply `NOK ENOTSUP` here.
+
+## Receive gain
+
+In monitor mode the driver's dynamic gain control has no associated peer to anchor on and tends to park the receiver too sensitive, which shows up as steady frame loss from false alarms. `radio.rx_igi` and `radio.rx_cck_pd` pin the two values instead. They are written, after monitor mode is up, to the driver's `rtw_monitor_igi` and `rtw_monitor_cck_pd` module parameters (`/sys/bus/usb/drivers/<radio.driver>/module/parameters/`), so they need the patched driver (`winject-wireless/rtl8812au`, branch `wfb-5.2.20`).
+
+- `0` means automatic and is written back, so the config file is always the source of truth.
+- A higher IGI trades weak-signal sensitivity for fewer false alarms: a link works down to about (IGI − 110) − 8 dB. Bench measurements on an AWUS036ACS put `0x3c` as the safest value and `0x44` as slightly better at strong signal.
+- A driver without the parameters is not an error. A warning is logged only when a non-zero value was requested.
+- The values apply to every modulation; there are no per-rate settings.
 
 ## Inject path (UDP → air)
 

@@ -20,6 +20,8 @@ struct RadioConfig
     std::string txpower;  // txpower.csv; relative paths resolve against the config file
     bool rx_bpf = false;
     unsigned tx_retry_us = 50000;
+    unsigned rx_igi = 0;     // monitor-mode fixed IGI; 0 = driver auto (DIG)
+    unsigned rx_cck_pd = 0;  // monitor-mode fixed CCK PD threshold; 0 = driver auto
 };
 
 struct NetConfig
