@@ -17,7 +17,7 @@ The radio is a bridge between three UDP sockets and one monitor-mode WiFi interf
                                                                                          ▼
                       data thread (own epoll)
  manager ──UDP 9000──▶ Injector ─▶ TX ring ─▶ PacketSocket sendmsg(radiotap ‖ MPDU) ─▶ wlx… ─▶ air
- manager ◀─UDP 9210── Forwarder ◀─ radiotap parse, Addr3 filter, FCS ◀─ PacketSocket recvmmsg ◀─ wlx… ◀─ air
+ manager ◀─UDP 9000── Forwarder ◀─ radiotap parse, Addr3 filter, FCS ◀─ PacketSocket recvmmsg ◀─ wlx… ◀─ air
 ```
 
 | Plane | Transport | Purpose |

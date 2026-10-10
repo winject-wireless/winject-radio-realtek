@@ -188,7 +188,7 @@ Occupancy fields are current values; the other fields are counters since process
 | `dropped_invalid_frame` | Inject datagrams outside 24–1472 bytes, truncated, or from a source other than `net.trusted_ipv4` |
 | `dropped_tx_queue` | Inject datagrams dropped because the ring was full |
 | `dropped_wifi` | Frames the packet socket refused (any error, or `ENOBUFS`/`EAGAIN` for longer than `radio.tx_retry_us`) |
-| `ether_pkt` | Datagrams read from the inject port |
+| `ether_pkt` | Datagrams read from the d-plane port |
 | `air_pkt` | Frames the driver accepted. Not a confirmation that they went on air |
 | `ts` | Uptime in µs |
 
@@ -199,7 +199,7 @@ Occupancy fields are current values; the other fields are counters since process
 | `rx_queue_sz` | Always 0: frames are forwarded in the same batch they are read |
 | `dropped_filter_mismatched` | Frames read but not forwarded: bad radiotap, own injected frames looped back, length outside 28–1504 bytes with FCS, or Addr3 filter miss |
 | `dropped_rx_queue` | Frames the kernel dropped because the packet socket's receive buffer was full (`PACKET_STATISTICS`). These were never read, so they are not in `air_pkt` |
-| `dropped_no_peer` | Frames that passed the filter while no host had registered on the forward port |
+| `dropped_no_peer` | Frames that passed the filter while no host had registered on the d-plane port |
 | `dropped_send_failed` | Forward `sendmmsg` failures |
 | `ether_pkt` | Frames sent to the registered host |
 | `air_pkt` | Frames read from the packet socket. With `radio.rx_bpf = true`, only frames the kernel filter kept |

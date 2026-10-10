@@ -49,7 +49,7 @@ winject-radio-realtek --config /etc/winject/radio-a.cfg
                                                                  ▼
                         data thread (own epoll)
  manager ──UDP 9000────▶ Injector ── TxRing ──▶ PacketSocket (sendmsg: radiotap ‖ MPDU) ──▶ wlx…
- manager ◀─UDP 9210───── Forwarder ◀── RxParser ◀── PacketSocket (recvmmsg, radiotap)  ◀── wlx…
+ manager ◀─UDP 9000───── Forwarder ◀── RxParser ◀── PacketSocket (recvmmsg, radiotap)  ◀── wlx…
 ```
 
 There are two threads, so a slow nl80211 call (a channel switch can take several ms) never stalls the data path. The data thread never takes a lock. It reads settings through atomics that the control thread publishes (§9).
@@ -167,7 +167,7 @@ ESP32 repo. Re-run tests after syncing. The vendored code keeps its own snake_ca
 | 6. Read the channel list | `NL80211_CMD_GET_WIPHY` (split dump): every `NL80211_FREQUENCY_ATTR_FREQ` without `DISABLED` or `NO_IR` becomes a channel number | exit 4 if empty |
 | 7. Load settings | `Settings::load_current()`, or defaults (§5) | defaults + warn |
 | 8. Apply radio | `RealtekRadio::apply(full)`, see §6.3 | exit 5 |
-| 9. Open sockets | packet socket (§8), UDP 9000, UDP 9210, console | exit 6 |
+| 9. Open sockets | packet socket (§8), UDP 9000 (d-plane), console | exit 6 |
 | 10. Start threads | data thread, then the control reactor `run()` | |
 
 On `SIGTERM`/`SIGINT`, stop both loops, close the sockets, and leave the interface in monitor mode. Leaving it there avoids a `managed`↔`monitor` flap on every restart.

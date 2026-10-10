@@ -2,14 +2,14 @@
 
 ## Overview
 
-The new radio is a Linux program, `winject-radio-realtek`, that drives one RTL8812AU dongle. To the manager it looks exactly like the ESP32 radio: the same UDP console (the m-plane in `winject-radio-esp32/docs/mplane.md`) and the same data ports (inject on 9000, forward on 9210).
+The new radio is a Linux program, `winject-radio-realtek`, that drives one RTL8812AU dongle. To the manager it looks exactly like the ESP32 radio: the same UDP console (the m-plane in `winject-radio-esp32/docs/mplane.md`) and the same d-plane (one UDP port, 9000, for inject, peer registration and forward; at the time of writing this was two ports, 9000 and 9210).
 
-The manager already lets you set the address and all three ports (`winject.device`, `winject.console`, `winject.inject_port`, `winject.forward_port` in `Config.cpp:115-263`). So phases 0–3 need no manager changes. You'd run one copy per dongle, either on the same host as the manager (`device = 127.0.0.1`) or on a separate board.
+The manager already lets you set the address and the console and d-plane ports (`winject.device`, `winject.console`, `winject.dplane_port`). So phases 0–3 need no manager changes. You'd run one copy per dongle, either on the same host as the manager (`device = 127.0.0.1`) or on a separate board.
 
 ```
 manager ──UDP console──▶ m-plane ──▶ WifiDevice (nl80211: monitor mode, channel, txpower)
         ──UDP 9000────▶ Injector  ──▶ AF_PACKET + radiotap ──▶ wlx… (rtl88xxau_wfb)
-        ◀─UDP 9210───── Capture   ◀── AF_PACKET + BPF filter + radiotap parse
+        ◀─UDP 9000───── Capture   ◀── AF_PACKET + BPF filter + radiotap parse
 ```
 
 ## Radio config (one file per dongle)
@@ -83,7 +83,7 @@ docs/        radio-realtek.md
 ## Phases
 
 1. **P0, bring-up:** config file, choosing the dongle, monitor setup, and m-plane `ping`/`help`/`radio_tx_info`.
-2. **P1, data path:** inject and forward with FCS, `rx_filter_addr3`. Test with both local dongles: two radio instances (consoles 2201 and 2202, separate inject/forward ports) and two managers using `configuration/winject-tests/bw_a.cfg` and `bw_b.cfg`, plus `manager_bw_test.sh`.
+2. **P1, data path:** inject and forward with FCS, `rx_filter_addr3`. Test with both local dongles: two radio instances (consoles 2201 and 2202, separate d-plane ports) and two managers using `configuration/winject-tests/bw_a.cfg` and `bw_b.cfg`, plus `manager_bw_test.sh`.
 3. **P2, radio settings:** full `radio_tx`, `save`/`load`, and `reset`. Compare power settings with the `wfb_ng_power_test` TUI.
 4. **P3:** test commands, `tx_info`/`rx_info`, systemd unit, docs.
 5. **P4, manager changes in `../winject-l3`:**
