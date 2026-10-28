@@ -1,13 +1,13 @@
 #ifndef WINJECT_RADIO_IO_REACTOR_H_
 #define WINJECT_RADIO_IO_REACTOR_H_
 
-#include <bfcext/epoll_reactor.hpp>
+#include <bfc/epoll_reactor.hpp>
 #include <functional>
 
 namespace winject
 {
 
-using IOReactor = bfcext::epoll_reactor<std::function<void()>>;
+using IOReactor = bfc::epoll_reactor<std::function<void()>>;
 
 }  // namespace winject
 
