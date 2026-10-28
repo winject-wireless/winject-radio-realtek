@@ -2,6 +2,8 @@
 
 #include <bfc/configuration_parser.hpp>
 #include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <set>
 
@@ -20,6 +22,29 @@ std::string trim(const std::string& s)
     }
     const auto end = s.find_last_not_of(" \t\r\n");
     return s.substr(start, end - start + 1);
+}
+
+// Receive-gain overrides: 0 means driver auto, otherwise a value in [lo, hi].
+// Decimal or 0x-prefixed hex.
+bool parse_gain(const bfc::configuration_parser& parser, const char* key,
+                unsigned lo, unsigned hi, unsigned* out, std::string* error)
+{
+    const auto text = parser.arg(key);
+    if (!text)
+    {
+        return true;
+    }
+    char* end = nullptr;
+    const unsigned long v = std::strtoul(text->c_str(), &end, 0);
+    if (text->empty() || *end != '\0' || (v != 0 && (v < lo || v > hi)))
+    {
+        char range[48];
+        std::snprintf(range, sizeof(range), "0 (auto) or 0x%x-0x%x", lo, hi);
+        *error = std::string(key) + " must be " + range;
+        return false;
+    }
+    *out = static_cast<unsigned>(v);
+    return true;
 }
 
 bool parse_log_level(const std::string& text, LogLevel* out)
@@ -62,6 +87,7 @@ bool AppConfig::load(const std::string& path, std::string* error)
         "radio.device",       "radio.usb_port",    "radio.mac",
         "radio.driver",       "radio.regdom",      "radio.bandwidth",
         "radio.txpower",      "radio.rx_bpf",      "radio.tx_retry_us",
+        "radio.rx_igi",       "radio.rx_cck_pd",
         "net.bind",           "net.console_port",  "net.dplane_port",
         "net.trusted_ipv4",  "state.dir",
         "tune.tx_queue_sz",   "tune.rx_batch",     "tune.sock_rcvbuf",
@@ -164,6 +190,12 @@ bool AppConfig::load(const std::string& path, std::string* error)
     if (auto retry = parser.as<unsigned>("radio.tx_retry_us"))
     {
         radio.tx_retry_us = *retry;
+    }
+
+    if (!parse_gain(parser, "radio.rx_igi", 0x1c, 0x5a, &radio.rx_igi, error) ||
+        !parse_gain(parser, "radio.rx_cck_pd", 0x10, 0xf0, &radio.rx_cck_pd, error))
+    {
+        return false;
     }
 
     if (auto bind = parser.arg("net.bind"))

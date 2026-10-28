@@ -63,7 +63,7 @@ The file uses the manager's `key = value` format, and `#` starts a comment. The 
 | `radio.device` | one of three | | Interface name, e.g. `wlx00c0cabce06f` |
 | `radio.usb_port` | one of three | | USB path below the root, e.g. `3-1.1`. Resolved through `/sys/bus/usb/devices/<port>:1.0/net/*` |
 | `radio.mac` | one of three | | Permanent MAC. Matches `/sys/class/net/*/address` |
-| `radio.driver` | no | `rtl88xxau_wfb` | Expected `ethtool -i` driver name (`/sys/class/net/<if>/device/driver` basename). Startup fails if it doesn't match |
+| `radio.driver` | no | `rtl88xxau_winject` | Expected `ethtool -i` driver name (`/sys/class/net/<if>/device/driver` basename). Startup fails if it doesn't match |
 | `radio.regdom` | no | `BO` | Two-letter regulatory domain, applied with `NL80211_CMD_REQ_SET_REG` |
 | `radio.bandwidth` | no | `20` | `20` or `40`. 40 means HT40+ and the radiotap MCS `BW_40` flag |
 | `radio.txpower` | yes | | Path to `txpower.csv` (§7). A relative path resolves against the config file's directory. Startup fails if the file is missing or invalid |
@@ -116,7 +116,7 @@ src/test/                      GoogleTest, one *Test.cpp per module (§11)
 configuration/                 radio-a.cfg, radio-b.cfg, txpower.csv
 scripts/
   winject-radio-realtek@.service
-  70-winject-radio-realtek.rules   udev: NM_UNMANAGED for rtl88xxau_wfb
+  70-winject-radio-realtek.rules   udev: NM_UNMANAGED for rtl88xxau_winject
   bench_two_radios.sh          §12
   sync_mplane.sh               re-vendor the ESP32 m-plane at a given commit
 docs/  plan.md, implementation.md, radio-realtek.md (user docs, P3)
@@ -283,7 +283,7 @@ rx_filter_addr3=ca:fe:ba:be:04:d2
 
 ## 7. TX power
 
-The m-plane value is in dBm (2–20). The 8812AU with `rtl88xxau_wfb` is driven by a power index (0–63, `rtw_tx_pwr_idx_override`). A measured table maps one to the other.
+The m-plane value is in dBm (2–20). The 8812AU with `rtl88xxau_winject` is driven by a power index (0–63, `rtw_tx_pwr_idx_override`). A measured table maps one to the other.
 
 **`txpower.csv`.** This is an external file with one row per index and the measured output power in dBm. There is no built-in table, and `radio.txpower` is required:
 
@@ -304,7 +304,7 @@ The shipped table ranges from −11.5 dBm (index 1) to 18.8 dBm (index 63). It i
 
 **Mapping.** Pick the index 1–63 whose measured `tx_power` is closest to the requested dBm. Ties go to the lower index. This handles the non-monotonic rows and never chooses index 0. With the shipped table, 2 dBm → index 29 (1.5 dBm), 10 → 42 (10.8), 17 → 58 (17.0), and 20 → 63 (18.8). The last one is reported as clamped, which means more than 0.5 dB outside the measured range. As on the ESP32 at 64-QAM, `radio_tx` reports the requested dBm, not the measured value. Each change is logged at `info` as `tx_power <n> dBm -> idx <i> (measured <x> dBm)`, and clamping is logged once.
 
-**Apply.** Call `Nl80211::set_tx_power_fixed_mbm(ifindex, -idx * 100)`. This is svpcom's driver hook (`ioctl_cfg80211.c:3692` sets `rtw_tx_pwr_idx_override = -value`). Writing only to sysfs does not change the output. After applying, read back with `get_interface`: the driver should report `txpower -<idx>.00 dBm`. If it doesn't, return `io_error`. This check also catches the stock `88XXau` driver, which ignores the call *(bench)*.
+**Apply.** Call `Nl80211::set_tx_power_fixed_mbm(ifindex, -idx * 100)`. This is the driver's power hook (`ioctl_cfg80211.c:3692` sets `rtw_tx_pwr_idx_override = -value`). Writing only to sysfs does not change the output. After applying, read back with `get_interface`: the driver should report `txpower -<idx>.00 dBm`. If it doesn't, return `io_error`. This check also catches the stock `88XXau` driver, which ignores the call *(bench)*.
 
 **Bench results** *(verified 2026-10-03, source and on air, both dongles as transmitter)*. This is the median RSSI at the other dongle, 40 frames per case, OFDM 6M on channel 6:
 
@@ -321,7 +321,7 @@ What this means:
 3. **Index 0 means "no override"** (`get_overridden_tx_power_index` in `include/drv_types.h:445`), which falls back to the driver's default power, about 10 dB above index 35. A computed index of 0 must never be sent. Clamp to 1 instead (§7 mapping).
 4. **The override is global across all dongles.** `rtw_tx_pwr_idx_override` is one module-wide variable (`os_intfs.c:587`), and `CurrentTxPwrIdx` is unused on the 8812A. Setting power on one dongle takes effect on another the next time that dongle recomputes its power, for example on a channel change. Both dongles also report the last value written, so the read-back check in this section cannot detect the problem. Until the driver is patched to keep the override per adapter, every radio on one host must use the same `tx_power`, or run on separate hosts.
 
-Note: both `88XXau` and `88XXau_wfb` are loaded on this host today. The driver check in step 2 of §6.1 makes sure the interface is bound to the `_wfb` module.
+Note: both `88XXau` and `88XXau_winject` are loaded on this host today. The driver check in step 2 of §6.1 makes sure the interface is bound to the `_winject` module.
 
 ## 8. Data plane
 
@@ -381,7 +381,7 @@ while ring not empty:
 ```
 
 - **No copy.** The radiotap header and the MPDU go to the kernel as two iovecs. Ring buffers come from a fixed pool of `tune.tx_queue_sz` × 1500 bytes, allocated once.
-- **Backpressure.** By default the driver silently drops frames when it runs out of xmit frames, and `sendmsg` still succeeds (`rtw_xmit.c`: `tx_drop++`, returns `NETDEV_TX_OK`). Loading the module with `MaxTxBufLen=<n>` makes it return `NETDEV_TX_BUSY` instead. Through `PACKET_QDISC_BYPASS` that becomes `ENOBUFS`, which the ring above handles. Recommended: `options 88XXau_wfb MaxTxBufLen=32` in `/etc/modprobe.d/winject.conf` *(bench: confirm the errno and find the best value)*. Without it, `air_pkt` counts frames given to the driver, and the driver's own `tx_drop` is lost.
+- **Backpressure.** By default the driver silently drops frames when it runs out of xmit frames, and `sendmsg` still succeeds (`rtw_xmit.c`: `tx_drop++`, returns `NETDEV_TX_OK`). Loading the module with `MaxTxBufLen=<n>` makes it return `NETDEV_TX_BUSY` instead. Through `PACKET_QDISC_BYPASS` that becomes `ENOBUFS`, which the ring above handles. Recommended: `options 88XXau_winject MaxTxBufLen=32` in `/etc/modprobe.d/winject.conf` *(bench: confirm the errno and find the best value)*. Without it, `air_pkt` counts frames given to the driver, and the driver's own `tx_drop` is lost.
 - `air_pkt` means "accepted by the driver", not "confirmed on air". This driver has no TX status in monitor mode. `in_flight` is always 0.
 
 ### 8.3 Receive and forward (`Forwarder`, data thread)
@@ -486,7 +486,7 @@ The vendored m-plane's own ESP32 tests (`mplane_args_test.cpp`, `mplane_commands
 
 ## Device loss and recovery
 
-The radio identifies its dongle by the interface name from config (`DeviceSelector::resolve`) and the ifindex at bring-up. After that, `if_nametoindex(ifname)` is compared to the stored ifindex: zero means unplugged, a different non-zero value means replugged (same `wlx…` name, new netdev). Recovery also requires the configured driver (`rtl88xxau_wfb` by default); a dongle on stock `88XXau` is ignored until the right driver binds.
+The radio identifies its dongle by the interface name from config (`DeviceSelector::resolve`) and the ifindex at bring-up. After that, `if_nametoindex(ifname)` is compared to the stored ifindex: zero means unplugged, a different non-zero value means replugged (same `wlx…` name, new netdev). Recovery also requires the configured driver (`rtl88xxau_winject` by default); a dongle on stock `88XXau` is ignored until the right driver binds.
 
 **While running**, `DeviceWatch` listens for rtnetlink link events and runs the same check every 1 s. When the device has been back on the right driver with a stable ifindex for 1 s, the process `execv`s itself (same path as m-plane `reset`). m-plane keeps answering while the dongle is gone; `radio_tx` returns `io_error`.
 
@@ -574,7 +574,7 @@ Rates are in Mbit/s, with loss in brackets. Throughput follows the offer, and th
 |---|---|---|
 | ENOBUFS backpressure with `MaxTxBufLen` | Not measured; another errno or a silent drop would break §8.2's retry | Measure in P2; fall back to pacing with `winject.tx_burst_size` |
 | Injected frames looping back to RX | wfb-ng sees them (marked with `TX_FLAGS`); dropped in §8.3, but they cost CPU | Count in `dropped_filter_mismatched`; check the rate on the bench |
-| `88XXau` vs `88XXau_wfb` both loaded | A dongle may bind to the stock driver after replug | Driver check at startup and on recovery; blacklist `88XXau` in `/etc/modprobe.d` |
+| `88XXau` vs `88XXau_winject` both loaded | A dongle may bind to the stock driver after replug | Driver check at startup and on recovery; blacklist `88XXau` in `/etc/modprobe.d` |
 | m-plane power range 2–20 dBm vs measured −11.5 to 18.8 dBm | 19–20 dBm clamp to index 63 (18.8 dBm), and −11.5 to 2 dBm cannot be requested | Clamping is logged, and the reported value is the requested one, as on the ESP32. Widen `WIFI_TX_POWER_DBM_MIN` together with the manager's `winject.power` range if lower power is needed |
 | TX power override is driver-global | Two radios on one host overwrite each other's power (§7) | Same `tx_power` on all radios per host, or patch the driver for a per-adapter override (P4b) |
 | `cca=false` from an existing manager config | Manager fails to program the radio | Remove `winject.cca` from configs used with this radio |

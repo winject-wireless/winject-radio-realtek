@@ -51,6 +51,7 @@ add_executable(winject-radio-realtek
     MplaneServer.cpp
     NetUtil.cpp
     DeviceWatch.cpp
+    DriverTune.cpp
 )
 target_include_directories(winject-radio-realtek PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}

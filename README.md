@@ -1,6 +1,6 @@
 # winject-radio-realtek
 
-Linux radio service for RTL8812AU (`rtl88xxau_wfb`): same m-plane and single d-plane UDP port as the ESP32 radio. Versioning: [docs/versioning.md](docs/versioning.md).
+Linux radio service for RTL8812AU (`rtl88xxau_winject`): same m-plane and single d-plane UDP port as the ESP32 radio. Versioning: [docs/versioning.md](docs/versioning.md).
 
 ## Build
 
@@ -19,7 +19,7 @@ Binary: `build/src/radio/winject-radio-realtek`
 sudo ./build/src/radio/winject-radio-realtek --config configuration/radio-a.cfg
 ```
 
-Requires a bound `rtl88xxau_wfb` interface and privileges for `AF_PACKET` / nl80211.
+Requires a bound `rtl88xxau_winject` interface and privileges for `AF_PACKET` / nl80211.
 
 If the dongle is not present yet, the process logs `waiting for device: …` and stays up until it appears (about 1 s debounce after enumeration). m-plane is unavailable until bring-up finishes.
 

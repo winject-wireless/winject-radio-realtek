@@ -23,6 +23,7 @@ add_executable(winject-radio-realtek-tests
     RxFilterBpfTest.cpp
     FcsTest.cpp
     SettingsTest.cpp
+    DriverTuneTest.cpp
     ../radio/Config.cpp
     ../radio/Log.cpp
     ../radio/DeviceSelector.cpp
@@ -33,6 +34,7 @@ add_executable(winject-radio-realtek-tests
     ../radio/RxFilterBpf.cpp
     ../radio/Fcs.cpp
     ../radio/Settings.cpp
+    ../radio/DriverTune.cpp
     ../radio/DplaneClassify.cpp
     mplane_args_test.cpp
     mplane_commands_test.cpp

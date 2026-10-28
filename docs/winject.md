@@ -6,7 +6,7 @@ The m-plane command protocol is in [mplane.md](./mplane.md); this document cover
 
 ## Overview
 
-The radio is a bridge between three UDP sockets and one monitor-mode WiFi interface driven by `rtl88xxau_wfb` (svpcom's 8812AU driver used by wfb-ng). To the manager it looks like the ESP32 radio: the same m-plane commands and the same d-plane datagram formats. It does not associate, route, or read the payload of the frames it carries; the manager builds every MPDU and parses everything forwarded to it.
+The radio is a bridge between three UDP sockets and one monitor-mode WiFi interface driven by `rtl88xxau_winject` (the winject build of the 8812AU driver, `winject-wireless/rtl8812au`). To the manager it looks like the ESP32 radio: the same m-plane commands and the same d-plane datagram formats. It does not associate, route, or read the payload of the frames it carries; the manager builds every MPDU and parses everything forwarded to it.
 
 ```
                       control thread (bfc epoll reactor)
@@ -80,12 +80,14 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | Key | Required | Default | Meaning |
 |-----|----------|---------|---------|
 | `radio.device` / `radio.usb_port` / `radio.mac` | exactly one | | Which dongle: interface name, USB port path (e.g. `3-1.1`), or permanent MAC |
-| `radio.driver` | no | `rtl88xxau_wfb` | Required driver basename. Rejects the stock `88XXau`, which ignores the TX power override |
+| `radio.driver` | no | `rtl88xxau_winject` | Required driver basename. Rejects the stock `88XXau`, which ignores the TX power override |
 | `radio.regdom` | no | `BO` | Two-letter regulatory domain |
 | `radio.bandwidth` | no | `20` | `20` (HT20) or `40` (HT40+, and the radiotap MCS `BW_40` flag) |
 | `radio.txpower` | yes | | Path to the calibration CSV; relative to the config file's directory |
 | `radio.rx_bpf` | no | `false` | Also filter Addr3 in the kernel ([below](#kernel-addr3-filter)) |
 | `radio.tx_retry_us` | no | `50000` | How long a frame may wait on a busy driver before it counts as `dropped_wifi` |
+| `radio.rx_igi` | no | `0` (auto) | Fixed receive gain (IGI) in monitor mode, `0x1c`–`0x5a`, hex or decimal ([below](#receive-gain)) |
+| `radio.rx_cck_pd` | no | `0` (auto) | Fixed CCK packet-detection threshold in monitor mode, `0x10`–`0xf0` ([below](#receive-gain)) |
 | `net.bind` | no | `0.0.0.0` | Address for all UDP sockets |
 | `net.console_port` | no | `2201` | m-plane |
 | `net.dplane_port` | no | `9000` | d-plane (inject, registration, forward). `net.inject_port` / `net.forward_port` are rejected |
@@ -97,6 +99,15 @@ Two threads keep slow control work off the data path: a channel switch or a TX p
 | `log.level` | no | `info` | `error`, `warn`, `info`, `debug`. Logs go to stderr |
 
 These replace the ESP32's m-plane `tune_*` and `network` commands, which reply `NOK ENOTSUP` here.
+
+## Receive gain
+
+In monitor mode the driver's dynamic gain control has no associated peer to anchor on and tends to park the receiver too sensitive, which shows up as steady frame loss from false alarms. `radio.rx_igi` and `radio.rx_cck_pd` pin the two values instead. They are written, after monitor mode is up, to the driver's `rtw_monitor_igi` and `rtw_monitor_cck_pd` module parameters (`/sys/bus/usb/drivers/<radio.driver>/module/parameters/`), so they need the winject driver build (`winject-wireless/rtl8812au`, branch `winject-5.2.20`).
+
+- `0` means automatic and is written back, so the config file is always the source of truth.
+- A higher IGI trades weak-signal sensitivity for fewer false alarms: a link works down to about (IGI − 110) − 8 dB. Bench measurements on an AWUS036ACS put `0x3c` as the safest value and `0x44` as slightly better at strong signal.
+- A driver without the parameters is not an error. A warning is logged only when a non-zero value was requested.
+- The values apply to every modulation; there are no per-rate settings.
 
 ## Inject path (UDP → air)
 
@@ -127,7 +138,7 @@ drain_ring():
 - **Radiotap template.** The header comes from the current `TxProfile`, rebuilt only when `radio_tx` changes the modulation. It is sent as its own iovec, so the MPDU is never re-assembled. See [Modulation](#modulation) for its bytes.
 - **No ACKs.** Every template sets `TX_FLAGS = NOACK`. Addr1 of winject frames carries manager data and can look unicast; without NOACK the driver retries each frame about 6 times.
 - **`air_pkt` means accepted by the driver.** The driver gives no TX status in monitor mode, so `in_flight` is always 0 and nothing confirms the frame left the antenna.
-- **Backpressure.** By default the driver drops frames silently when it runs out of transmit buffers, and `sendmsg` still succeeds. Loading the module with `MaxTxBufLen=<n>` makes it return busy instead, which reaches the radio as `ENOBUFS` through `PACKET_QDISC_BYPASS` and triggers the retry above. Recommended: `options 88XXau_wfb MaxTxBufLen=32` in `/etc/modprobe.d/`. Without it, driver drops are invisible in `tx_info`.
+- **Backpressure.** By default the driver drops frames silently when it runs out of transmit buffers, and `sendmsg` still succeeds. Loading the module with `MaxTxBufLen=<n>` makes it return busy instead, which reaches the radio as `ENOBUFS` through `PACKET_QDISC_BYPASS` and triggers the retry above. Recommended: `options 88XXau_winject MaxTxBufLen=32` in `/etc/modprobe.d/`. Without it, driver drops are invisible in `tx_info`.
 - **Pacing.** The radio does not pace; it sends as fast as the driver accepts. The manager paces with its airtime model.
 
 ## Receive path (air → UDP)
@@ -153,7 +164,7 @@ on packet socket readable:
 
 - **Radiotap parsing** uses the radiotap-library iterator (`src/vendor/radiotap/`). The driver emits extended present bitmaps and vendor namespaces, so fixed offsets would break.
 - **Own frames.** The driver loops about 90 % of the frames this radio injects back into its own RX path, marked with radiotap `TX_FLAGS`. They are dropped and show up in `dropped_filter_mismatched`.
-- **FCS.** `rtl88xxau_wfb` delivers every frame with `F_FCS` set and the real on-air FCS appended, so the trailer is forwarded as received. The driver frees frames with a CRC or ICV error before monitor mode (`usb_ops_linux.c`), so on-air corruption shows up as missing frames, not as FCS failures at the manager. Frames with `F_BADFCS` would be forwarded unchanged if a patched driver passed them up.
+- **FCS.** `rtl88xxau_winject` delivers every frame with `F_FCS` set and the real on-air FCS appended, so the trailer is forwarded as received. The driver frees frames with a CRC or ICV error before monitor mode (`usb_ops_linux.c`), so on-air corruption shows up as missing frames, not as FCS failures at the manager. Frames with `F_BADFCS` would be forwarded unchanged if a patched driver passed them up.
 - **Peer registration.** Any d-plane datagram of length 1–23 bytes (from `net.trusted_ipv4` when set) registers its source as the peer; the most recent sender wins. The manager sends one about every second. Forwarded frames are sent from the same d-plane socket.
 
 ### D-plane lengths
@@ -203,7 +214,7 @@ What the driver cannot do, verified on the bench (details in [implementation.md]
 
 ### TX power
 
-The m-plane gives dBm (2–20). `rtl88xxau_wfb` takes a power index 0–63 through the svpcom override: `NL80211_CMD_SET_WIPHY` with `TX_POWER_SETTING = FIXED` and `TX_POWER_LEVEL = -idx × 100` mBm (the same as `iw … set txpower fixed -<idx×100>`). After setting it, the radio reads the interface back and expects `txpower = -idx × 100`; anything else is `EIO`.
+The m-plane gives dBm (2–20). `rtl88xxau_winject` takes a power index 0–63 through the driver's power override: `NL80211_CMD_SET_WIPHY` with `TX_POWER_SETTING = FIXED` and `TX_POWER_LEVEL = -idx × 100` mBm (the same as `iw … set txpower fixed -<idx×100>`). After setting it, the radio reads the interface back and expects `txpower = -idx × 100`; anything else is `EIO`.
 
 **Calibration.** `radio.txpower` points at a CSV of measured output per index (`configuration/txpower.csv`: `idx,tx_power`, header and `#` comments allowed, sparse rows allowed, at least 2 rows with index 1–63). Bad numbers, indices outside 0–63 and duplicates fail startup with the file and line.
 
@@ -211,7 +222,7 @@ The m-plane gives dBm (2–20). `rtl88xxau_wfb` takes a power index 0–63 throu
 
 **Caveats:**
 
-- **The override is global across dongles.** `rtw_tx_pwr_idx_override` is one module-wide variable. Setting power on one dongle takes effect on every other `rtl88xxau_wfb` dongle the next time it recomputes power (for example on a channel change), and the read-back cannot see this. Give every radio on one host the same `tx_power`, or run them on separate hosts.
+- **The override is global across dongles.** `rtw_tx_pwr_idx_override` is one module-wide variable. Setting power on one dongle takes effect on every other `rtl88xxau_winject` dongle the next time it recomputes power (for example on a channel change), and the read-back cannot see this. Give every radio on one host the same `tx_power`, or run them on separate hosts.
 - **Per-frame power is not possible.** The driver ignores radiotap `DBM_TX_POWER`.
 - **One table for all dongles and channels.** It was measured on one dongle on channel 6. Point a radio's `radio.txpower` at its own CSV if it differs.
 
@@ -272,8 +283,8 @@ Differences from the ESP32's identities:
 
 | Item | Why |
 |------|-----|
-| `rtl88xxau_wfb` bound to the dongle | Required for injection with per-frame rate and the TX power override. If `88XXau` is also loaded, blacklist it so a replugged dongle does not bind to it |
-| `options 88XXau_wfb MaxTxBufLen=32` | Turns silent driver drops into `ENOBUFS` backpressure ([Inject path](#inject-path-udp--air)) |
+| `rtl88xxau_winject` bound to the dongle | Required for injection with per-frame rate and the TX power override. If `88XXau` is also loaded, blacklist it so a replugged dongle does not bind to it |
+| `options 88XXau_winject MaxTxBufLen=32` | Turns silent driver drops into `ENOBUFS` backpressure ([Inject path](#inject-path-udp--air)) |
 | NetworkManager not managing the dongle | Avoids the monitor-mode race in bring-up step 7 (a udev rule setting `NM_UNMANAGED=1` for the driver avoids it entirely) |
 | `CAP_NET_RAW`, `CAP_NET_ADMIN` | Packet socket; nl80211 and link flags |
 | `libnl-3`, `libnl-genl-3` | nl80211 |

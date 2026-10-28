@@ -88,3 +88,46 @@ TEST(ConfigTest, LdpcAndStbcKeysRejected)
         EXPECT_NE(err.find("unknown key"), std::string::npos) << err;
     }
 }
+
+namespace
+{
+bool load_with(const std::string& extra, winject::AppConfig* cfg, std::string* err)
+{
+    const std::string path = ::testing::TempDir() + "/gain.cfg";
+    {
+        std::ofstream out(path);
+        out << "radio.device = wlan0\nradio.txpower = /tmp/t.csv\nstate.dir = /tmp/x\n"
+            << extra;
+    }
+    return cfg->load(path, err);
+}
+}  // namespace
+
+TEST(ConfigTest, RxGainDefaultsToAuto)
+{
+    winject::AppConfig cfg;
+    std::string err;
+    ASSERT_TRUE(load_with("", &cfg, &err)) << err;
+    EXPECT_EQ(cfg.radio.rx_igi, 0u);
+    EXPECT_EQ(cfg.radio.rx_cck_pd, 0u);
+}
+
+TEST(ConfigTest, RxGainAcceptsHexAndDecimal)
+{
+    winject::AppConfig cfg;
+    std::string err;
+    ASSERT_TRUE(load_with("radio.rx_igi = 0x3c\nradio.rx_cck_pd = 138\n", &cfg, &err)) << err;
+    EXPECT_EQ(cfg.radio.rx_igi, 0x3cu);
+    EXPECT_EQ(cfg.radio.rx_cck_pd, 138u);
+}
+
+TEST(ConfigTest, RxGainRejectsOutOfRange)
+{
+    winject::AppConfig cfg;
+    std::string err;
+    EXPECT_FALSE(load_with("radio.rx_igi = 0x10\n", &cfg, &err));
+    EXPECT_FALSE(load_with("radio.rx_igi = 0x5b\n", &cfg, &err));
+    EXPECT_FALSE(load_with("radio.rx_cck_pd = 0xf1\n", &cfg, &err));
+    EXPECT_FALSE(load_with("radio.rx_cck_pd = abc\n", &cfg, &err));
+    EXPECT_TRUE(load_with("radio.rx_igi = 0\nradio.rx_cck_pd = 0\n", &cfg, &err)) << err;
+}
